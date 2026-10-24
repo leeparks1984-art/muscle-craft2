@@ -23,7 +23,6 @@
         const { useState, useEffect } = React;
 
         function App() {
-            // Your Gemini API Key Integration
             const GEMINI_API_KEY = "AQ.Ab8RN6KE4zW9jrs87XsXyC3OT3ADmd_Y73CaQIzWSPMeG-oE-A";
 
             const [activeTab, setActiveTab] = useState('dashboard');
@@ -48,6 +47,44 @@
                     ];
                 } catch(e) { return []; }
             });
+
+            // Master pool of meals for the Swappable Meal Planner
+            const mealPools = {
+                Breakfast: [
+                    { name: 'Steel-Cut Oats with Whey Isolate & Blueberries', calories: 450, protein: 40, carbs: 55, fat: 8 },
+                    { name: 'Scrambled Egg Whites & Whole Eggs with Spinach & Rye Toast', calories: 420, protein: 35, carbs: 30, fat: 14 },
+                    { name: 'Greek Yogurt Parfait with Chia Seeds & Almond Butter', calories: 480, protein: 38, carbs: 40, fat: 16 }
+                ],
+                Lunch: [
+                    { name: 'Grilled Turkey Breast & Wild Rice Bowl with Avocado', calories: 620, protein: 52, carbs: 60, fat: 18 },
+                    { name: 'Tuna & Quinoa Salad with Olive Oil Dressing', calories: 580, protein: 48, carbs: 45, fat: 15 },
+                    { name: 'Chicken Fajita Bowl with Black Beans & Brown Rice', calories: 640, protein: 55, carbs: 55, fat: 16 }
+                ],
+                Dinner: [
+                    { name: 'Lean Beef Steaks with Sweet Potato Mash & Asparagus', calories: 680, protein: 58, carbs: 50, fat: 22 },
+                    { name: 'Baked Salmon with Quinoa & Roasted Zucchini', calories: 650, protein: 46, carbs: 40, fat: 26 },
+                    { name: 'Lean Turkey Mince Bolognese with High-Protein Pasta', calories: 630, protein: 54, carbs: 65, fat: 12 }
+                ]
+            };
+
+            // Active display state for meal slots
+            const [currentMeals, setCurrentMeals] = useState([
+                { tag: 'Breakfast', ...mealPools.Breakfast[0] },
+                { tag: 'Lunch', ...mealPools.Lunch[0] },
+                { tag: 'Dinner', ...mealPools.Dinner[0] }
+            ]);
+
+            const swapMeal = (index, tag) => {
+                const pool = mealPools[tag];
+                const currentName = currentMeals[index].name;
+                // Filter out the currently shown meal so it picks a different one
+                const alternatives = pool.filter(m => m.name !== currentName);
+                const nextMeal = alternatives[Math.floor(Math.random() * alternatives.length)];
+                
+                const updated = [...currentMeals];
+                updated[index] = { tag, ...nextMeal };
+                setCurrentMeals(updated);
+            };
 
             const [selectedWorkout, setSelectedWorkout] = useState(null);
             const [workoutActive, setWorkoutActive] = useState(false);
@@ -124,10 +161,8 @@
                 }
             ];
 
-            // AI Camera Snap handler using your Gemini API key
             const handleAISnap = async () => {
                 setIsAnalyzing(true);
-                // Simulated fallback / real API execution ready structure
                 setTimeout(() => {
                     const sampleMeals = [
                         { name: 'Grilled Chicken Breast, Quinoa & Broccoli', calories: 520, protein: 55, carbs: 45, fat: 12 },
@@ -301,17 +336,25 @@
 
                         {activeTab === 'meals' && (
                             <div className="space-y-6">
-                                <h2 className="text-lg font-bold mb-1">Muscle Building & Type 3c Meals</h2>
+                                <div className="flex justify-between items-center mb-1">
+                                    <h2 className="text-lg font-bold">Muscle Building & Type 3c Meals</h2>
+                                </div>
+                                <p className="text-xs text-slate-400 mb-4">Click the **Swap** button if you want a different meal idea for that slot.</p>
+
                                 <div className="space-y-4">
-                                    {[
-                                        { name: 'Steel-Cut Oats with Whey & Blueberries', calories: 450, protein: 40, carbs: 55, fat: 8, tag: 'Breakfast' },
-                                        { name: 'Grilled Turkey Breast & Wild Rice Bowl', calories: 620, protein: 52, carbs: 60, fat: 18, tag: 'Lunch' },
-                                        { name: 'Lean Beef Steaks with Sweet Potato', calories: 680, protein: 58, carbs: 50, fat: 22, tag: 'Dinner' }
-                                    ].map((recipe, idx) => (
+                                    {currentMeals.map((recipe, idx) => (
                                         <div key={idx} className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-                                            <div className="flex justify-between items-start mb-2">
+                                            <div className="flex justify-between items-center mb-2">
                                                 <span className="text-[10px] bg-emerald-500/10 text-emerald-400 font-bold px-2 py-0.5 rounded">{recipe.tag}</span>
-                                                <span className="text-xs font-bold text-amber-400">{calculateCreon(recipe.fat)} Creon Capsules</span>
+                                                <div className="flex items-center space-x-2">
+                                                    <button 
+                                                        onClick={() => swapMeal(idx, recipe.tag)}
+                                                        className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold px-2.5 py-1 rounded-lg border border-slate-700 flex items-center space-x-1 transition-all"
+                                                    >
+                                                        <span>🔄 Swap Idea</span>
+                                                    </button>
+                                                    <span className="text-xs font-bold text-amber-400">{calculateCreon(recipe.fat)} Creon Caps</span>
+                                                </div>
                                             </div>
                                             <h3 className="font-bold text-sm text-slate-100 mb-1">{recipe.name}</h3>
                                             <p className="text-xs text-slate-400 mb-3">{recipe.calories} kcal | P: {recipe.protein}g | C: {recipe.carbs}g | F: {recipe.fat}g</p>
