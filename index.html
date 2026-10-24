@@ -48,42 +48,53 @@
                 } catch(e) { return []; }
             });
 
-            // Master pool of meals for the Swappable Meal Planner
-            const mealPools = {
-                Breakfast: [
-                    { name: 'Steel-Cut Oats with Whey Isolate & Blueberries', calories: 450, protein: 40, carbs: 55, fat: 8 },
-                    { name: 'Scrambled Egg Whites & Whole Eggs with Spinach & Rye Toast', calories: 420, protein: 35, carbs: 30, fat: 14 },
-                    { name: 'Greek Yogurt Parfait with Chia Seeds & Almond Butter', calories: 480, protein: 38, carbs: 40, fat: 16 }
-                ],
-                Lunch: [
-                    { name: 'Grilled Turkey Breast & Wild Rice Bowl with Avocado', calories: 620, protein: 52, carbs: 60, fat: 18 },
-                    { name: 'Tuna & Quinoa Salad with Olive Oil Dressing', calories: 580, protein: 48, carbs: 45, fat: 15 },
-                    { name: 'Chicken Fajita Bowl with Black Beans & Brown Rice', calories: 640, protein: 55, carbs: 55, fat: 16 }
-                ],
-                Dinner: [
-                    { name: 'Lean Beef Steaks with Sweet Potato Mash & Asparagus', calories: 680, protein: 58, carbs: 50, fat: 22 },
-                    { name: 'Baked Salmon with Quinoa & Roasted Zucchini', calories: 650, protein: 46, carbs: 40, fat: 26 },
-                    { name: 'Lean Turkey Mince Bolognese with High-Protein Pasta', calories: 630, protein: 54, carbs: 65, fat: 12 }
-                ]
-            };
-
-            // Active display state for meal slots
+            // Initial active meals (Tuna-free)
             const [currentMeals, setCurrentMeals] = useState([
-                { tag: 'Breakfast', ...mealPools.Breakfast[0] },
-                { tag: 'Lunch', ...mealPools.Lunch[0] },
-                { tag: 'Dinner', ...mealPools.Dinner[0] }
+                { tag: 'Breakfast', name: 'Steel-Cut Oats with Whey Isolate & Blueberries', calories: 450, protein: 40, carbs: 55, fat: 8 },
+                { tag: 'Lunch', name: 'Grilled Turkey Breast & Wild Rice Bowl with Avocado', calories: 620, protein: 52, carbs: 60, fat: 18 },
+                { tag: 'Dinner', name: 'Lean Beef Steaks with Sweet Potato Mash & Asparagus', calories: 680, protein: 58, carbs: 50, fat: 22 }
             ]);
 
-            const swapMeal = (index, tag) => {
-                const pool = mealPools[tag];
-                const currentName = currentMeals[index].name;
-                // Filter out the currently shown meal so it picks a different one
-                const alternatives = pool.filter(m => m.name !== currentName);
-                const nextMeal = alternatives[Math.floor(Math.random() * alternatives.length)];
-                
-                const updated = [...currentMeals];
-                updated[index] = { tag, ...nextMeal };
-                setCurrentMeals(updated);
+            const [swappingIndex, setSwappingIndex] = useState(null);
+
+            // AI-Powered Swap Meal using Gemini API
+            const swapMealWithAI = async (index, tag) => {
+                setSwappingIndex(index);
+                try {
+                    const prompt = `Generate a unique, high-protein, muscle-building ${tag} recipe. Crucial constraint: Do NOT include tuna. Ensure it uses low-GI complex carbs, suitable for a Type 3c diabetic with Exocrine Pancreatic Insufficiency. Return ONLY valid JSON format with keys: name (string), calories (number), protein (number in grams), carbs (number in grams), fat (number in grams).`;
+
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }]
+                        })
+                    });
+
+                    const data = await response.json();
+                    const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                    
+                    // Clean up markdown code blocks if returned by AI
+                    const jsonString = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+                    const parsedMeal = JSON.parse(jsonString);
+
+                    const updated = [...currentMeals];
+                    updated[index] = { tag, ...parsedMeal };
+                    setCurrentMeals(updated);
+                } catch (error) {
+                    console.error("AI Swap failed, using backup pool:", error);
+                    // Fallback backup options if network fails
+                    const backups = {
+                        Breakfast: { name: 'Greek Yogurt Parfait with Chia Seeds & Almond Butter', calories: 480, protein: 38, carbs: 40, fat: 16 },
+                        Lunch: { name: 'Grilled Chicken Breast & Quinoa Salad with Olive Oil', calories: 580, protein: 54, carbs: 45, fat: 14 },
+                        Dinner: { name: 'Baked Salmon with Quinoa & Roasted Zucchini', calories: 650, protein: 46, carbs: 40, fat: 26 }
+                    };
+                    const updated = [...currentMeals];
+                    updated[index] = { tag, ...backups[tag] };
+                    setCurrentMeals(updated);
+                } finally {
+                    setSwappingIndex(null);
+                }
             };
 
             const [selectedWorkout, setSelectedWorkout] = useState(null);
@@ -337,9 +348,9 @@
                         {activeTab === 'meals' && (
                             <div className="space-y-6">
                                 <div className="flex justify-between items-center mb-1">
-                                    <h2 className="text-lg font-bold">Muscle Building & Type 3c Meals</h2>
+                                    <h2 className="text-lg font-bold">AI Muscle & Type 3c Meals</h2>
                                 </div>
-                                <p className="text-xs text-slate-400 mb-4">Click the **Swap** button if you want a different meal idea for that slot.</p>
+                                <p className="text-xs text-slate-400 mb-4">Click **AI Swap** to generate a brand-new, tuna-free recipe using Gemini AI.</p>
 
                                 <div className="space-y-4">
                                     {currentMeals.map((recipe, idx) => (
@@ -348,10 +359,11 @@
                                                 <span className="text-[10px] bg-emerald-500/10 text-emerald-400 font-bold px-2 py-0.5 rounded">{recipe.tag}</span>
                                                 <div className="flex items-center space-x-2">
                                                     <button 
-                                                        onClick={() => swapMeal(idx, recipe.tag)}
+                                                        onClick={() => swapMealWithAI(idx, recipe.tag)}
+                                                        disabled={swappingIndex === idx}
                                                         className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold px-2.5 py-1 rounded-lg border border-slate-700 flex items-center space-x-1 transition-all"
                                                     >
-                                                        <span>🔄 Swap Idea</span>
+                                                        <span>{swappingIndex === idx ? '✨ Generating...' : '✨ AI Swap'}</span>
                                                     </button>
                                                     <span className="text-xs font-bold text-amber-400">{calculateCreon(recipe.fat)} Creon Caps</span>
                                                 </div>
