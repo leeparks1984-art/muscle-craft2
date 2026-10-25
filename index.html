@@ -27,7 +27,19 @@
 
             const [activeTab, setActiveTab] = useState('dashboard');
             const [fatRatio, setFatRatio] = useState(12);
-            const [dailyGoals] = useState({ calories: 2800, protein: 180, carbs: 300, fat: 90 });
+            
+            const [dailyGoals, setDailyGoals] = useState({
+                calories: 2200,
+                protein: 200,
+                carbs: 120,
+                fat: 90
+            });
+
+            const [waterConsumed, setWaterConsumed] = useState(() => {
+                const saved = localStorage.getItem('mc_water');
+                return saved ? Number(saved) : 0;
+            });
+            const waterTarget = 2000;
 
             const [loggedMeals, setLoggedMeals] = useState(() => {
                 try {
@@ -41,27 +53,27 @@
                     const saved = localStorage.getItem('mc_tasks');
                     return saved ? JSON.parse(saved) : [
                         { id: 1, text: 'Take Creon with Breakfast', completed: false },
-                        { id: 2, text: 'Pre-workout blood glucose check', completed: false },
-                        { id: 3, text: 'Hydration target: 500ml water', completed: false },
+                        { id: 2, text: 'Snack Reminder: High-Protein Low-Carb Snack (Mid-Morning)', completed: false },
+                        { id: 3, text: 'Pre-workout blood glucose check', completed: false },
                         { id: 4, text: 'Take Creon with Lunch & Dinner', completed: false },
+                        { id: 5, text: 'Snack Reminder: Protein Shake / Nuts (Afternoon)', completed: false },
                     ];
                 } catch(e) { return []; }
             });
 
-            // Initial active meals (Tuna-free)
             const [currentMeals, setCurrentMeals] = useState([
-                { tag: 'Breakfast', name: 'Steel-Cut Oats with Whey Isolate & Blueberries', calories: 450, protein: 40, carbs: 55, fat: 8 },
-                { tag: 'Lunch', name: 'Grilled Turkey Breast & Wild Rice Bowl with Avocado', calories: 620, protein: 52, carbs: 60, fat: 18 },
-                { tag: 'Dinner', name: 'Lean Beef Steaks with Sweet Potato Mash & Asparagus', calories: 680, protein: 58, carbs: 50, fat: 22 }
+                { tag: 'Breakfast', name: 'Scrambled Eggs & Egg Whites with Spinach & Avocado', calories: 420, protein: 35, carbs: 10, fat: 26 },
+                { tag: 'Lunch', name: 'Grilled Chicken Breast & Mixed Greens with Olive Oil', calories: 520, protein: 55, carbs: 15, fat: 22 },
+                { tag: 'Dinner', name: 'Lean Beef Steak with Asparagus & Garlic Butter', calories: 610, protein: 58, carbs: 8, fat: 38 }
             ]);
 
             const [swappingIndex, setSwappingIndex] = useState(null);
 
-            // Robust AI-Powered Swap Meal using Gemini API
+            // Fully bulletproof Gemini AI recipe generator
             const swapMealWithAI = async (index, tag) => {
                 setSwappingIndex(index);
                 try {
-                    const prompt = `Generate a unique, high-protein, muscle-building ${tag} recipe. Crucial constraint: Do NOT include tuna. Ensure it uses low-GI complex carbs, suitable for a Type 3c diabetic with Exocrine Pancreatic Insufficiency. Return ONLY a valid JSON object with EXACTLY these keys and no extra text or markdown formatting: {"name": "recipe name string", "calories": number, "protein": number, "carbs": number, "fat": number}`;
+                    const prompt = `Generate a unique, high-protein, LOWER-CARB muscle-building ${tag} recipe (under 25g carbs). Crucial rule: Do NOT include tuna. Suitable for a Type 3c diabetic with Exocrine Pancreatic Insufficiency. Return ONLY raw valid JSON without markdown ticks, code blocks, or text. The JSON format must be: {"name": "recipe name string", "calories": number, "protein": number, "carbs": number, "fat": number}`;
 
                     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
                         method: 'POST',
@@ -72,31 +84,47 @@
                     });
 
                     const data = await response.json();
-                    let textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                    let rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
                     
-                    // Thoroughly strip markdown code blocks or stray whitespace
-                    textResponse = textResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
-                    const jsonStart = textResponse.indexOf('{');
-                    const jsonEnd = textResponse.lastIndexOf('}');
+                    // Clean markdown wrapping if present
+                    rawText = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+                    const startIdx = rawText.indexOf('{');
+                    const endIdx = rawText.lastIndexOf('}');
                     
-                    if (jsonStart !== -1 && jsonEnd !== -1) {
-                        textResponse = textResponse.substring(jsonStart, jsonEnd + 1);
+                    if (startIdx !== -1 && endIdx !== -1) {
+                        rawText = rawText.substring(startIdx, endIdx + 1);
                     }
 
-                    const parsedMeal = JSON.parse(textResponse);
+                    const parsedMeal = JSON.parse(rawText);
+
+                    if (!parsedMeal.name || typeof parsedMeal.calories !== 'number') {
+                        throw new Error('Invalid JSON structure from AI');
+                    }
 
                     const updated = [...currentMeals];
                     updated[index] = { tag, ...parsedMeal };
                     setCurrentMeals(updated);
                 } catch (error) {
-                    console.error("AI Swap failed, using backup pool:", error);
-                    const backups = {
-                        Breakfast: { name: 'Greek Yogurt Parfait with Chia Seeds & Almond Butter', calories: 480, protein: 38, carbs: 40, fat: 16 },
-                        Lunch: { name: 'Grilled Chicken Breast & Quinoa Salad with Olive Oil', calories: 580, protein: 54, carbs: 45, fat: 14 },
-                        Dinner: { name: 'Baked Salmon with Quinoa & Roasted Zucchini', calories: 650, protein: 46, carbs: 40, fat: 26 }
+                    console.error("AI Generation Error:", error);
+                    // Dynamic fallback rotation if API hits network limits
+                    const dynamicFallbacks = {
+                        Breakfast: [
+                            { name: 'Omelet with Mushrooms, Cheddar & Spinach', calories: 440, protein: 36, carbs: 8, fat: 28 },
+                            { name: 'Greek Yogurt with Hemp Seeds & Almond Butter', calories: 410, protein: 34, carbs: 12, fat: 22 }
+                        ],
+                        Lunch: [
+                            { name: 'Turkey Mince Lettuce Wraps with Guacamole', calories: 510, protein: 50, carbs: 12, fat: 26 },
+                            { name: 'Grilled Pork Chop with Green Beans & Olive Oil', calories: 560, protein: 52, carbs: 6, fat: 34 }
+                        ],
+                        Dinner: [
+                            { name: 'Baked Salmon Fillet with Broccoli & Olive Oil', calories: 590, protein: 46, carbs: 10, fat: 32 },
+                            { name: 'Sirloin Steak with Sautéed Spinach & Garlic Butter', calories: 630, protein: 60, carbs: 5, fat: 39 }
+                        ]
                     };
+                    const pool = dynamicFallbacks[tag];
+                    const randomPick = pool[Math.floor(Math.random() * pool.length)];
                     const updated = [...currentMeals];
-                    updated[index] = { tag, ...backups[tag] };
+                    updated[index] = { tag, ...randomPick };
                     setCurrentMeals(updated);
                 } finally {
                     setSwappingIndex(null);
@@ -118,6 +146,10 @@
             useEffect(() => {
                 localStorage.setItem('mc_tasks', JSON.stringify(tasks));
             }, [tasks]);
+
+            useEffect(() => {
+                localStorage.setItem('mc_water', waterConsumed);
+            }, [waterConsumed]);
 
             useEffect(() => {
                 let interval = null;
@@ -182,9 +214,9 @@
                 setIsAnalyzing(true);
                 setTimeout(() => {
                     const sampleMeals = [
-                        { name: 'Grilled Chicken Breast, Quinoa & Broccoli', calories: 520, protein: 55, carbs: 45, fat: 12 },
-                        { name: 'Salmon Fillet with Sweet Potato & Olive Oil', calories: 650, protein: 42, carbs: 50, fat: 28 },
-                        { name: 'Lean Turkey Pasta with Tomato Sauce', calories: 610, protein: 48, carbs: 65, fat: 15 }
+                        { name: 'Grilled Chicken Salad with Avocado & Olive Oil', calories: 520, protein: 55, carbs: 12, fat: 28 },
+                        { name: 'Ribeye Steak with Roasted Asparagus', calories: 650, protein: 52, carbs: 6, fat: 45 },
+                        { name: 'Turkey Burger (No Bun) with Cheese & Side Salad', calories: 580, protein: 48, carbs: 8, fat: 38 }
                     ];
                     setScanResult(sampleMeals[Math.floor(Math.random() * sampleMeals.length)]);
                     setIsAnalyzing(false);
@@ -194,9 +226,9 @@
             const handleSimulatedBarcodeScan = (code) => {
                 const db = {
                     '5000158': { name: 'High Protein Peanut Butter (30g)', calories: 190, protein: 10, carbs: 4, fat: 16 },
-                    '5098765': { name: 'Whole Rolled Oats (100g)', calories: 370, protein: 13, carbs: 60, fat: 7 }
+                    '5098765': { name: 'Whey Protein Isolate Scoop (30g)', calories: 120, protein: 25, carbs: 2, fat: 1 }
                 };
-                setScanResult(db[code] || { name: 'Scanned Packet Item (150g)', calories: 340, protein: 25, carbs: 30, fat: 10 });
+                setScanResult(db[code] || { name: 'Scanned Packet Item (150g)', calories: 340, protein: 30, carbs: 5, fat: 20 });
             };
 
             return (
@@ -206,10 +238,9 @@
                             <div className="bg-emerald-500 p-2 rounded-lg text-slate-950 font-black text-sm">🏋️‍♂️</div>
                             <div>
                                 <h1 className="font-bold text-lg leading-tight tracking-wide">MuscleCraft Pro</h1>
-                                <p className="text-xs text-slate-400">Type 3c • EPI & Muscle Builder</p>
+                                <p className="text-xs text-slate-400">Type 3c • Lower-Carb & EPI</p>
                             </div>
                         </div>
-                        {/* Quick Creon Ratio Adjuster Header Badge */}
                         <div className="flex items-center space-x-2 bg-slate-800 px-3 py-1.5 rounded-full border border-slate-700">
                             <span className="text-xs text-emerald-400 font-semibold">Ratio:</span>
                             <select 
@@ -231,7 +262,7 @@
                             <div className="space-y-6">
                                 <div className="bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-800 rounded-2xl p-5 shadow-xl">
                                     <div className="flex justify-between items-center mb-4">
-                                        <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">Nutrition & Enzymes</h2>
+                                        <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">Daily Targets & Enzymes</h2>
                                         <span className="text-xs bg-emerald-500/20 text-emerald-400 font-medium px-2.5 py-1 rounded-full border border-emerald-500/30">
                                             {totalConsumed.creon} Creon Caps Req.
                                         </span>
@@ -248,16 +279,31 @@
                                     <div className="grid grid-cols-3 gap-3 text-center">
                                         <div className="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/50">
                                             <span className="text-xs text-slate-400 block">Protein</span>
-                                            <span className="text-sm font-bold text-blue-400">{totalConsumed.protein}g</span>
+                                            <span className="text-sm font-bold text-blue-400">{totalConsumed.protein}g / {dailyGoals.protein}g</span>
                                         </div>
                                         <div className="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/50">
-                                            <span className="text-xs text-slate-400 block">Carbs</span>
-                                            <span className="text-sm font-bold text-amber-400">{totalConsumed.carbs}g</span>
+                                            <span className="text-xs text-slate-400 block">Carbs (Low)</span>
+                                            <span className="text-sm font-bold text-amber-400">{totalConsumed.carbs}g / {dailyGoals.carbs}g</span>
                                         </div>
                                         <div className="bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/50">
                                             <span className="text-xs text-slate-400 block">Fat</span>
-                                            <span className="text-sm font-bold text-rose-400">{totalConsumed.fat}g</span>
+                                            <span className="text-sm font-bold text-rose-400">{totalConsumed.fat}g / {dailyGoals.fat}g</span>
                                         </div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <h3 className="text-sm font-semibold text-slate-300">💧 Water Intake (Target: 2L)</h3>
+                                        <span className="text-xs font-bold text-cyan-400">{waterConsumed} / {waterTarget} ml</span>
+                                    </div>
+                                    <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden mb-3">
+                                        <div className="bg-cyan-500 h-full rounded-full transition-all duration-300" style={{ width: `${Math.min(100, (waterConsumed / waterTarget) * 100)}%` }}></div>
+                                    </div>
+                                    <div className="flex space-x-2">
+                                        <button onClick={() => setWaterConsumed(prev => prev + 250)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-cyan-400 font-bold text-xs py-2 rounded-xl border border-slate-700">+250ml</button>
+                                        <button onClick={() => setWaterConsumed(prev => prev + 500)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-cyan-400 font-bold text-xs py-2 rounded-xl border border-slate-700">+500ml</button>
+                                        <button onClick={() => setWaterConsumed(0)} className="bg-slate-800 hover:bg-rose-950 text-rose-400 font-bold text-xs px-3 py-2 rounded-xl border border-slate-700">Reset</button>
                                     </div>
                                 </div>
 
@@ -275,7 +321,7 @@
                                 </div>
 
                                 <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-                                    <h3 className="text-sm font-semibold text-slate-300 mb-3">Daily Health Tasks</h3>
+                                    <h3 className="text-sm font-semibold text-slate-300 mb-3">Daily Health & Snack Reminders</h3>
                                     <div className="space-y-2">
                                         {tasks.map(task => (
                                             <div key={task.id} onClick={() => setTasks(tasks.map(t => t.id === task.id ? { ...t, completed: !t.completed } : t))} className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer ${task.completed ? 'bg-emerald-950/20 border-emerald-500/30 text-slate-400 line-through' : 'bg-slate-800/40 border-slate-800 text-slate-200'}`}>
@@ -365,9 +411,9 @@
                         {activeTab === 'meals' && (
                             <div className="space-y-6">
                                 <div className="flex justify-between items-center mb-1">
-                                    <h2 className="text-lg font-bold">AI Muscle & Type 3c Meals</h2>
+                                    <h2 className="text-lg font-bold">Lower-Carb Muscle & Type 3c Meals</h2>
                                 </div>
-                                <p className="text-xs text-slate-400 mb-4">Click **AI Swap** to generate a brand-new, tuna-free recipe using Gemini AI.</p>
+                                <p className="text-xs text-slate-400 mb-4">Click **AI Swap** as many times as you like to generate fresh, tuna-free recipes.</p>
 
                                 <div className="space-y-4">
                                     {currentMeals.map((recipe, idx) => (
@@ -413,7 +459,6 @@
                                             />
                                             <span className="font-bold text-emerald-400 text-sm whitespace-nowrap">1 : {fatRatio}g</span>
                                         </div>
-                                        <p className="text-[10px] text-slate-500 mt-2">Adjusting this slider immediately updates capsule requirements across all meals, recipes, and barcode scans.</p>
                                     </div>
                                 </div>
                             </div>
@@ -436,7 +481,7 @@
                                             ) : (
                                                 <div className="space-y-2">
                                                     <button onClick={() => handleSimulatedBarcodeScan('5000158')} className="w-full bg-blue-600 text-white font-bold text-xs py-2 rounded-xl">Simulate Scan: Peanut Butter</button>
-                                                    <button onClick={() => handleSimulatedBarcodeScan('5098765')} className="w-full bg-slate-800 text-slate-200 font-bold text-xs py-2 rounded-xl">Simulate Scan: Oats</button>
+                                                    <button onClick={() => handleSimulatedBarcodeScan('5098765')} className="w-full bg-slate-800 text-slate-200 font-bold text-xs py-2 rounded-xl">Simulate Scan: Protein Isolate</button>
                                                 </div>
                                             )}
                                         </div>
